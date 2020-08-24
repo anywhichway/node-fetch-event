@@ -1,10 +1,11 @@
 const fs = require("fs"),
-	path = require("path"),
+	fspath = require("path"),
 	process = require("process"),
 	stream = require("stream"),
 	fetch = require("node-fetch"),
 	cluster = require('cluster'),
-	numCPUs = require('os').cpus().length;
+	numCPUs = require('os').cpus().length,
+	requireFromUrl = require('require-from-url/sync');
 
 import Request from "./src/request.js";
 import Response from "./src/response.js";
@@ -27,37 +28,75 @@ const protocols = {
 	https: require("https")
 }
 
-const workerCache = {
-	
+const workerCache = {};
+
+function route(toMatch,worker,url,aroute) {
+	if(toMatch==="*") {
+		if(url.pathname.endsWith("/")) {
+			return aroute || {path:url.pathname + worker};
+		}
+		return url.pathname.endsWith(".js") ? {path:url.pathname} : {path:url.pathname + ".js"};
+	}
+	if(toMatch==url.pathname) {
+		return aroute ||  (url.pathname.endsWith(".js") ? {path:url.pathname} : {path:url.pathname + ".js"});
+	}
+	if(toMatch && typeof(toMatch)==="object") {
+		for(const key in toMatch) {
+			const match = route(key,worker,url,toMatch[key]);
+			if(match) {
+				return match;
+			}
+		}
+	}
 }
 
-let workerPath;
-
-function server({protocol="http",hostname="localhost",port=3000,maxWorkers=1,keys={},worker="worker.js",standalone,cacheWorkers},cb) {
-	const cwdWorkerPath = path.join(process.cwd(),worker),
-		nodeWorkerPath =  path.join( __dirname,worker),
-		createServer = () => { 
+function server({protocol="http",hostname="localhost",port=3000,maxWorkers=1,keys={},worker="worker.js",standalone,cacheWorkers,workerSource,routes="*"},cb) {
+		const createServer = () => { 
 			protocols[protocol].createServer(async (req,res) => {
 				const request = new Request(req),
 					response = new Response(res),
 					event = new FetchEvent({request,response});
-				let worker = workerCache[workerPath];
-				if(!worker) {
-					try {
-						worker = require(cwdWorkerPath);
-						workerPath = nodeWorkerPath;
-						if(cacheWorkers) {
-							 workerCache[workerPath] = worker;
+				const {path,ttl} = route(routes,worker,new URL(request.url))||{};
+				console.log(path)
+				// handle 404 here if no worker path
+				if(ttl) {
+					cacheWorkers = ttl;
+				}
+				let theworker = workerCache[path];
+				if(!theworker) {
+					if(workerSource) {
+						{
+							theworker = requireFromUrl(`${workerSource}${path}`)
+							if(cacheWorkers) {
+								workerCache[path] = theworker;
+								if(typeof(cacheWorkers)==="number") {
+									setInterval(() => delete workerCache[path],cacheWorkers*1000);
+								}
+							}
 						}
-					} catch(e) {
-						worker = require(nodeWorkerPath);
-						workerPath = nodeWorkerPath;
-						if(cacheWorkers) {
-							 workerCache[workerPath] = worker;
+					} else {
+							const cwdWorkerPath = fspath.join(process.cwd(),worker),
+								nodeWorkerPath =  fspath.join( __dirname,worker);
+						try {
+							theworker = require(cwdWorkerPath);
+							path = nodeWorkerPath;
+							if(cacheWorkers) {
+								 workerCache[path] = theworker;
+							}
+						} catch(e) {
+							theworker = require(nodeWorkerPath);
+							path = nodeWorkerPath;
+							if(cacheWorkers) {
+								workerCache[path] = theworker;
+								if(typeof(cacheWorkers)==="number") {
+									setInterval(() => delete workerCache[path],cacheWorkers);
+								}
+							}
 						}
 					}
 				}
-				worker({addEventListener,caches,fetch,Response,Request});
+				// handle 404 here if no worker path
+				theworker({addEventListener,caches,fetch,Response,Request});
 				listeners.fetch(event);
 				let finalresponse = await event.response;
 				if(finalresponse instanceof fetch.Response) {
@@ -84,7 +123,7 @@ function server({protocol="http",hostname="localhost",port=3000,maxWorkers=1,key
 	if(standalone) {
 		createServer();
 		if(cb) {
-			cb({processId:process.pid,maxWorkers,protocol,port,hostname,standalone})
+			cb({processId:process.pid,maxWorkers,protocol,port,hostname,standalone,cacheWorkers,workerSource})
 		}
 	} else {
 		if (cluster.isMaster) {
@@ -92,7 +131,7 @@ function server({protocol="http",hostname="localhost",port=3000,maxWorkers=1,key
 			cluster.fork();
 		}
 		if(cb) {
-			cb({processId:process.pid,maxWorkers,protocol,port,hostname,standalone})
+			cb({processId:process.pid,maxWorkers,protocol,port,hostname,standalone,cacheWorkers,workerSource})
 		}
 		cluster.on("exit", (worker, code, signal) => {
 				console.log(`worker ${worker.process.pid} died ${code} ${signal}`);

@@ -58,19 +58,19 @@ if(typeof(addEventListener)!=="undefined") {
 
 A server is provided as part of `node-fetch-event`, just start it from the command line or require it and it will start running:
 
-```
+```javascript
 node -r esm ./node_modules/node-fetch-event/index.js
 ```
 
 or
 
-```
+```javascript
 require("node-fetch-event/server.js")()
 ```
 
 or
 
-```
+```javascript
 import {server} from "node-fetch-event";
 server();
 ```
@@ -83,19 +83,45 @@ example code above in `worker.js` and type `http://localhost:3000` into a browse
 
 Of course, you can provide options to control the server, e.g. `server(options)`. They have the surface:
 
-```
+```javascript
 {
 	"protocol": "http" || "https" // https not yet supported
 	"hostname": // defaults to localhost
 	"port": // defaults to 3000
-	"maxWorkers": // defaults to 1, maximum is automatically reduced to the number of cores on the computer where it is run
-	"standalone": // defaults to false (a cluster is created), use true to create a stanalone server that will shutdown (crash) on errors
-	"routes": // optional, maps paths to specific workers, if missing, "worker.js" is loaded, not yet implemented, only worker.js supported
-	"cacheWorkers": // defaults to false, a new copy of each worker is loaded for every request, if true (for production) the worker is cached after the first load
+	"maxWorkers": // default:1, maximum is automatically reduced to the number of cores on the computer where it is run
+	"standalone": // default:false (a cluster is created), use true to create a stanalone server that will shutdown (crash) on errors
+	"worker": // default:worker.js, the default worker file name for routes ending in /
+	"routes": // default:"/", optional, maps paths to specific workers, if missing, the value of worker is loaded
+	"cacheWorkers": // default:false, a new worker is loaded for every request,
+					// if true (for production) the worker is cached after the first load,
+					// if a number, assumes to be seconds at which to invalidate cache for a worker
+					// can be overriden per route
+	"workerSource": // optional the host from which to serve workers, if not specifed first looks in `process.cwd()` and then `__directory`
 	"keys": // https cert and key paths or values {certPath, keyPath, cert, key}, not yet supported
 	"cacheStorage": // a storage engine to put behind the built in Cache class, the default is an in memory Map. Not yet implemented.
 }
 ```
+
+#### Routes
+
+The server route specification is an object the keys of which are pathnames to match the request URL and values objects with the surface `{path,ttl}`, for example:
+
+```javascript
+{
+	"/": {
+		"path": "/worker.js"
+	},
+	"/hello": {
+		"path": "/worker.js"
+	},
+	"/bye": {
+		"path": "/goodbye.js",
+		"ttl": 36000
+	}
+}
+```
+
+Regular expression matches are on the way. There are also plans to read Clouflare wrangler and other configuration files for routes.
 
 ## Accessing Additional Features
 
@@ -103,7 +129,7 @@ Of course, you can provide options to control the server, e.g. `server(options)`
 
 There is a `Cache` implementaton as part of `node-fetch-event`. To use it, expose it via to your main function. The `node-fetch-event` server always exposes `Cache` and `caches`.
 
-```
+```javascript
 if(typeof(addEventListener)!=="undefined") {
 	main({addEventListener,fetch,Response,Request,Cache,caches});
 } else {
@@ -144,6 +170,13 @@ faster client updates. If a different response (including a clone) is returned, 
 a flaw in your code and you return a different response after alreayd starting to send on the original, an error is thrown (but if you did not start the server in `standalone` mode the
 cluster will continue serving other workers).
 
+## Remote Worker Source
+
+One of the key advantages of FAAS providers is their CDNS. If you have the resources to establish NodeJS servers in multiple locations, then you can effectively have your own CDN by designating one server
+to be the source of your workers. The `node-fetch-server` will fetch new versions based on TTL data in route specifications or `cacheWorkers`. 
+
 ## Release History (reverse chronological order)
+
+2020-08-24 v0.0.2a Added route and cache support
 
 2020-08-24 v0.0.1a First public release

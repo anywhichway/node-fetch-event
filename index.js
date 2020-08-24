@@ -10,7 +10,7 @@ try {
 	options = JSON.parse(fs.readFileSync(path.join(__dirname,"nfe.json")));
 }
 
-function status({processId,maxWorkers,protocol,port,hostname,standalone}) {
-	console.log(`Running node-fetch-event server processId:${processId} maxWorkers:${maxWorkers} standalone:${!!standalone} ${protocol}://${hostname}${port ? ":"+port : ""}`)
+function status({processId,maxWorkers,protocol,port,hostname,standalone,cacheWorkers,workerSource="file"}) {
+	console.log(`Running node-fetch-event server processId:${processId} maxWorkers:${maxWorkers} cacheWorkers:${cacheWorkers} workerSource:${workerSource} standalone:${!!standalone} host:${protocol}://${hostname}${port ? ":"+port : ""}`)
 }
 server(options,status);

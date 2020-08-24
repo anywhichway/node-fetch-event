@@ -59,6 +59,8 @@ class Request extends Body {
 		super(options.body, {
 			size: init.size || 0
 		})
+		
+		Object.entries(options).forEach(([key,value]) => Object.defineProperty(this,key,{enumerable:true,value}))
 	}
 
 	clone() {

@@ -5,7 +5,20 @@
 	"maxWorkers": 4,
 	"standalone": true,
 	"cacheWorkers": false,
+	"workerSource": "http://localhost:8082/",
 	"keys": {
 		
+	},
+	"routes": {
+		"/": {
+			"path": "/worker.js"
+		},
+		"/hello": {
+			"path": "/worker.js"
+		},
+		"/bye": {
+			"path": "/goodbye.js",
+			"ttl": 36000
+		}
 	}
 }
