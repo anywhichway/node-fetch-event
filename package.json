@@ -1,4 +1,21 @@
 {
+	"version": "0.0.1a",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/anywhichway/node-fetch-event.git"
+	},
+	"keywords": [
+		"serverless",
+		"lambda",
+		"fetchevent",
+		"cloudflare"
+	],
+	"author": "Simon Y. Blackwell <syblackwell@anywhichway.com> (http://www.github.com/anywhichway)",
+	"license": "AGPL, v3.0",
+	"bugs": {
+		"url": "https://github.com/anywhichway/node-fetch-event/issues"
+	},
+	"homepage": "https://github.com/anywhichway/node-fetch-event#readme",
 	"dependencies": {
 		"clone-response": "^1.0.2",
 		"deepcopy": "^2.1.0",
