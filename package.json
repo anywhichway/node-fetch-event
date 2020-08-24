@@ -1,4 +1,5 @@
 {
+	"name": "node-fetch-event",
 	"version": "0.0.1a",
 	"repository": {
 		"type": "git",
