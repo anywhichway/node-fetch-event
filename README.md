@@ -9,11 +9,18 @@ needs of the developer, e.g. memory or response time limits, access to additiona
 
 3) developing and hosting services from scratch using the `FetchEvent` pattern.
 
-The libray includes support for [Cache](https://developer.mozilla.org/en-US/docs/Web/API/Cache), routes, data stores (including built-in Cloudflare compatible KVStore), NodeJS modules.
+The libray includes support for [Cache](https://developer.mozilla.org/en-US/docs/Web/API/Cache), 
+[TextDecoder](https://developer.mozilla.org/en-US/docs/Web/API/TextDecoder), 
+[TextEncoder](https://developer.mozilla.org/en-US/docs/Web/API/TextEncoder), 
+[Web Crypto](https://developer.mozilla.org/en-US/docs/Web/API/Crypto),
+[atob](https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/atob) and [btoa](https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/btoa),
+routes, 
+data stores (including a built-in Cloudflare compatible KVStore), 
+and importing/requiring almost any NodeJS module.
 
 The code is currently in an ALPHA state.
 
-Portions of this library are based on the stellar [node-fetch](https://www.npmjs.com/package/node-fetch) source code.
+[Acknowledgements]
 
 [Installing](#installing)
 
@@ -29,23 +36,27 @@ Portions of this library are based on the stellar [node-fetch](https://www.npmjs
 
 [Internals](#internals)
 
+[Release History](#release-history)
+
 # Installing
 
 `npm install node-fetch-event`
 
 # Usage
 
-The core functions behave, at a minimum, as one would expect:
+The core functions behave as defined below:
 
-1) `addEventListener`
+1) [addEventListener](https://developers.cloudflare.com/workers/runtime-apis/add-event-listener)
 
-2) `event.responsdWith`
+2) [event.respondWith](https://developers.cloudflare.com/workers/runtime-apis/fetch-event#methods)
 
-3) `event.waitUntil`
+3) [event.waitUntil](https://developers.cloudflare.com/workers/runtime-apis/fetch-event#methods)
+
+4) [event.passThroughOnException](https://developers.cloudflare.com/workers/runtime-apis/fetch-event#methods) is not supported. Use the gloabl server option `workerFailureMode` instead.
 
 ## Writing Code
 
-Write your worker code as you normally would, except conditionalize target environment variables if you with to continue deployment to serverless hosts while also running in the `node-fetch-event` environment:
+Write your worker code as you normally would, except conditionalize target environment variables if you wis to continue deployment to serverless hosts while also running in the `node-fetch-event` environment:
 
 ```javascript
 
@@ -129,6 +140,10 @@ Of course, you can provide options to control the server, e.g. `server(options)`
 					// if a number, assumes to be seconds at which to invalidate cache for a worker
 					// can be overriden per route
 	"workerSource": // optional the host from which to serve workers, if not specifed first looks in `process.cwd()` and then `__directory`
+	"workerFailureMode": open || error || closed, 
+					// open (default returns a 500 error with no message, 
+					// error returns a 500 error with a message, 
+					// closed (or any other value) never responds, requesting client may hang
 	"keys": // https cert and key paths or values {certPath, keyPath, cert, key}, not yet supported
 	"cacheStorage": // a storage engine class to put behind the built in Cache class, the default is an in memory Map. Not yet implemented.
 	"kvStorage": // a storage engine class to put behind the built in KVStore class. Not yet implemented.
@@ -140,6 +155,8 @@ then you can effectively have your own CDN by designating one server to be the s
 will fetch new versions based on `maxAge` data in route specifications or `cacheWorkers`. 
 
 HINT: If you set `cacheWorkers` to false during development, you will not have to restart your server when you change the worker code, just reload your browser.
+
+Note: `workerFailureMode` may not work as expected during ALPHA and BETA. With clustering and Workers, the `node-fetch-event` server is very rresilibe to crashes, but they could occur.
 
 ## Routes
 
@@ -395,11 +412,19 @@ by `write` and `end`. This can be conveniently processed by the standard body re
 
 Note: Use `new Response()` or `new Response(undefined,options)` not `new Response(null)` to get this behavior.
 
+Writable streams are not yet supported, but when they are, they will be frozen and converted to a readable stream when `respondWith` resolves.
+
 ## Internals
 
 Internally, the `node-fetch-event` server isolates the execution of requested routes to Node `worker_threads` and runs it's http(s) request handler using Node `cluster`.
 
+## Acknowledgements
+
+In addition to the dependencies in `package.json`, portions of this library use source code from the stellar [node-fetch](https://www.npmjs.com/package/node-fetch).
+
 ## Release History (reverse chronological order)
+
+2020-08-27 v0.0.6a Added additional missing imports for each worker, e.g. atob, TextEncoder, crypto, etc.
 
 2020-08-27 v0.0.5a Added KVStore. Improved documentation.
 

@@ -45,40 +45,57 @@ async function initializeWorker(source,{cacheWorkers,workerPath,maxIdle=60000}) 
 			root = `${__dirname}/src`; // running in a fork
 		}
 	const code = `
-		requireFromUrl = require('require-from-url/sync');
-		import Request from "${root}/request.js";
-		import Response from "${root}/response.js";
-		import addEventListener from "${root}/add-event-listener.js";
-		import FetchEvent from "${root}/fetch-event.js";
-		import Cache from "${root}/cache.js";
-		import KVStore from "${root}/kv-store.js";
 		import { parentPort } from "worker_threads";
-		const caches = {
-			default:new Cache()
-		};
-		${source};
-		parentPort.on("message",(workerData) => {
-			if(workerData==="close") {
-				parentPort.close();
-				return;
-			}
-			const data = JSON.parse(workerData),
-				__fetchevent__ = new FetchEvent({request:new Request(data.url,data)});
-			if(data.params) {
-				Object.defineProperty(__fetchevent__.request,"params",{value:data.params});
-			}
-			addEventListener.fetch(__fetchevent__);
-			__fetchevent__.response.then(async (response) => {
-				const body = await response.text(),
-					options = Object.assign({},response);
-				if(body!=null && body!=="undefined") {
-					options.body = body;
+		try {
+			const requireFromUrl = require('require-from-url/sync'),
+				crypto = new require("node-webcrypto-ossl"),
+				{ atob, btoa } = require('abab'),
+				fetch = require("node-fetch");
+			import { TextEncoder, TextDecoder } from "util";
+			import Request from "${root}/request.js";
+			import Response from "${root}/response.js";
+			import addEventListener from "${root}/add-event-listener.js";
+			import FetchEvent from "${root}/fetch-event.js";
+			import Cache from "${root}/cache.js";
+			import KVStore from "${root}/kv-store.js";
+			
+			const caches = {
+				default:new Cache()
+			};
+			${source};
+			parentPort.on("message",(workerData) => {
+				if(workerData==="close") {
+					parentPort.close();
+					return;
 				}
-				parentPort.postMessage(JSON.stringify(options));
-				await Promise.all(__fetchevent__.awaiting);
+				const data = JSON.parse(workerData),
+					__fetchevent__ = new FetchEvent({request:new Request(data.url,data)});
+				if(data.params) {
+					Object.defineProperty(__fetchevent__.request,"params",{value:data.params});
+				}
+				addEventListener.fetch(__fetchevent__);
+				__fetchevent__.response.then(async (response) => {
+					const body = await response.text(),
+						options = Object.assign({},response);
+					if(body!=null && body!=="undefined") {
+						options.body = body;
+					}
+					parentPort.postMessage(JSON.stringify(options));
+					await Promise.all(__fetchevent__.awaiting);
+				}).catch(e => {
+					parentPort.close(e+"");
+				});
 			});
-		})`;
-	const worker = new Worker(code, {eval:true});
+		} catch (e) {
+			//parentPort.postMessage();
+			parentPort.close(e+"");
+		}`;
+	let worker;
+	try {
+		worker = new Worker(code, {eval:true});
+	} catch(e) {
+		console.log(e);
+	}
 	worker.hit = Date.now();
 	setInterval(() => {
 		if(Date.now()-worker.hit>maxIdle) {
@@ -88,7 +105,7 @@ async function initializeWorker(source,{cacheWorkers,workerPath,maxIdle=60000}) 
 	worker.on('exit', (code) => {
 		const {source} = workerCache[workerPath]||{};
 		if (code !== 0) {
-			// what to do
+			console.log(code)
 		}
 		if(source) {
 			 workerCache[workerPath] = source;
@@ -108,9 +125,10 @@ async function initializeWorker(source,{cacheWorkers,workerPath,maxIdle=60000}) 
 	return worker;
 }
 
-function server({protocol="http",hostname="localhost",port=3000,maxServers=1,keys={},worker="worker",standalone,cacheWorkers,workerSource,routes="*"},cb) {
+function server({protocol="http",hostname="localhost",port=3000,maxServers=1,keys={},worker="worker",standalone,cacheWorkers,workerSource,routes="*",workerFailureMode="open"},cb) {
 		const createServer = () => { 
 			protocols[protocol].createServer(async (req,res) => {
+				try {
 				const request = new Request(req),
 					response = new Response(res),
 					event = new FetchEvent({request,response});
@@ -234,6 +252,16 @@ function server({protocol="http",hostname="localhost",port=3000,maxServers=1,key
 					res.end(await finalresponse.text());
 				}
 				await Promise.all(event.awaiting);
+				} catch(e) {
+					if(workerFailureMode==="open") {
+						res.statusCode = 500;
+						res.end();
+					} else if(workerFailureMode==="error") {
+						res.write(e+"");
+						res.end();
+					}
+					// else swallow and become non-responsive to request
+				}
 			}).listen(port,hostname);
 		};
 			

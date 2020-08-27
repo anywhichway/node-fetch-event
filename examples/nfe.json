@@ -6,6 +6,7 @@
 	"standalone": true,
 	"cacheWorkers": true,
 	"workerSource": "http://localhost:8082",
+	"workerFailureMode":"error",
 	"keys": {
 		
 	},

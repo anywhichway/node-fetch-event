@@ -3,6 +3,7 @@
 class FetchEvent {
 	constructor(config) {
 		Object.assign(this,config);
+		this.type = "fetch";
 		Object.defineProperty(this,"response",{writable:true});
 		Object.defineProperty(this,"awaiting",{value:[]});
 	}
