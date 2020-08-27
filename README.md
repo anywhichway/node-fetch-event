@@ -14,6 +14,8 @@ The libray includes support for [Cache](https://developer.mozilla.org/en-US/docs
 
 The code is currently in an ALPHA state.
 
+POrtions of this library are based on the stellar [node-fetch](https://www.npmjs.com/package/node-fetch) source code.
+
 # Installing
 
 `npm install node-fetch-event`
