@@ -8,6 +8,8 @@ to serve as an open source means of:
 2) moving serverless functions to alternate hosting operations should the capabilities of the severless provider not meet the business
 needs of the developer, e.g. memory or response time limits, access to additional `NodeJS` libraries, etc.
 
+3) developing services from scratch using the FetchEvent pattern.
+
 The libray includes support for [Cache](https://developer.mozilla.org/en-US/docs/Web/API/Cache), routes, data stores, and other capabilities.
 
 The code is currently in an ALPHA state.
@@ -20,11 +22,11 @@ The code is currently in an ALPHA state.
 
 The core functions behave, at a minimum, as one would expect:
 
-1) addEventListener
+1) `addEventListener`
 
-2) event.responsdWith
+2) `event.responsdWith`
 
-3) event.waitUntil
+3) `event.waitUntil`
 
 ## Writing Code
 
