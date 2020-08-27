@@ -342,7 +342,7 @@ The `Cache` wrapper does type checking and conversion.
 
 In some cases, e.g. `Cloudflare`, your hosting provider will automatically add variables to your serverless function. If not, you will also need to conditionally add them.
 
-The `node-fetch-event` server exposes `KVStore` with the same API as [Cloudflare)[https://developers.cloudflare.com/workers/runtime-apis/kv]. However, in the ALPHA the
+The `node-fetch-event` server exposes `KVStore` with the same API as [Cloudflare][https://developers.cloudflare.com/workers/runtime-apis/kv]. However, in the ALPHA the
 storage is just local to the server and the `limit` and `cursor` options to `list` are ignored.
 
 ```
