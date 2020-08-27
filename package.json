@@ -1,6 +1,6 @@
 {
 	"name": "node-fetch-event",
-	"version": "0.0.2a",
+	"version": "0.0.4a",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/anywhichway/node-fetch-event.git"
@@ -29,8 +29,12 @@
 		"stream-buffers": "^3.0.2"
 	},
 	"devDependencies": {
+		"@rollup/plugin-commonjs": "^15.0.0",
+		"@rollup/plugin-node-resolve": "^9.0.0",
 		"benchtest": "^2.0.6",
 		"chai": "^4.2.0",
-		"mocha": "^8.1.1"
+		"mocha": "^8.1.1",
+		"webpack": "^4.44.1",
+		"webpack-cli": "^3.3.12"
 	}
 }

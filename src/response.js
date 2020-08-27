@@ -34,33 +34,48 @@ const lock = (object={}) => {
 }
 
 class Response extends Body {
-	constructor(input,{headers={},status,statusText}={}) {
-		let body;
+	constructor(input,{headers=input ? input.headers||{} : {},status=input ? input.status||200 : 200,statusText = input ? input.statusText : undefined}={}) {
 		const type = typeof(input);
 		if(input && type==="object") {
 			if(input instanceof Response) {
 				return input.clone();
 			}
 			if(input instanceof fetch.Response) {
-				const clone =  input.clone();
-				return new Response(clone.body,clone);
+				return new Response(cloneBody(input.body),clone);
 			}
-			if(input instanceof http.ServerResponse) { // need to also handle instanceof node-fetch response
-				super(input);
-				Object.defineProperty(this,"nodeResponse",{value:input});
+			if(input instanceof http.ServerResponse) {
+				super(null);
 				const responseheaders = input.getHeaders();
 				headers = new Headers(responseheaders,input);
+			} else {
+				headers = new Headers(headers);
+				super(input.body,{size:headers.get("content-length")||0});
 			}
 		} else if(input===undefined) {
 			input = new streamBuffers.ReadableStreamBuffer({
    			 	initialSize: (1024),   // start at 1 kilobyte.
 			    incrementAmount: (10 * 1024) // grow by 10 kilobytes each time buffer overflows.
 			});
+			headers = new Headers(headers);
 			super(input);
-			headers = new Headers(headers);
+			Object.defineProperty(this,"end",{configurable:true,writable:true,value:function(data) {
+				if(this.writable) {
+					if(this.nodeResponse) {
+						this.nodeResponse.end(data);
+						return;
+					};
+					this.body.stop();
+					lock(this);
+				}
+			}});
+			Object.defineProperty(this,"write",{configurable:true,writable:true,value:function(data) {
+				if(this.writable) {
+					this.nodeResponse ? this.nodeResponse.write(data) : this.body.put(data);
+				}
+			}})
 		} else {
-			super(input,{headers,status,statusText});
 			headers = new Headers(headers);
+			super(input);
 		}
 		Object.defineProperty(this,"internals",{value:{headers,status,statusText}});
 		if(!this.writable) {
@@ -95,11 +110,7 @@ class Response extends Body {
 	set statusText(text) {
 		return this.nodeResponse ? this.nodeResponse.statusMessage=text : this.internals.statusText=text
 	}
-	write(data) {
-		if(this.writable) {
-			this.nodeResponse ? this.nodeResponse.write(data) : this.body.put(data);
-		}
-	}
+	
 	get writable() {
 		const type = typeof(this.body);
 		if(this.body && type==="object") {

@@ -2,23 +2,29 @@
 	"protocol": "http",
 	"hostname": "localhost",
 	"port": 3001,
-	"maxWorkers": 4,
+	"maxServers": 4,
 	"standalone": true,
-	"cacheWorkers": false,
-	"workerSource": "http://localhost:8082/",
+	"cacheWorkers": true,
+	"workerSource": "http://localhost:8082",
 	"keys": {
 		
 	},
 	"routes": {
-		"/": {
-			"path": "/worker.js"
-		},
-		"/hello": {
-			"path": "/worker.js"
-		},
-		"/bye": {
-			"path": "/goodbye.js",
-			"ttl": 36000
+		"get": {
+			"/": {
+				"path": "worker"
+			},
+			"/\/hello.*/": {
+				"path": "worker"
+			},
+			"/\/bye.*/": {
+				"path": "http://localhost:8082/goodbye.js",
+				"maxAge": 36000
+			},
+			"/message/:content": {
+				"path": "message?content=hello world",
+				"useQuery": true
+			}
 		}
 	}
 }

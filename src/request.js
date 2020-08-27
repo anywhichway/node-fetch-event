@@ -34,7 +34,7 @@ class Request extends Body {
 		
 		options.headers = new Headers(init.headers||{});
 		
-		if ((init.body != null) && (method === "GET" || method === "HEAD" || method === "OPTIONS")) {
+		if ((init.body != null) && (options.method === "GET" || options.method === "HEAD" || options.method === "OPTIONS")) {
 			throw new TypeError("Request with GET/HEAD/OPTIONS method cannot have body");
 		}
 		
@@ -43,7 +43,7 @@ class Request extends Body {
 			contentLengthValue = "0";
 		}
 	
-		if (init.body !== null) {
+		if (init.body != null) {
 			const type = typeof(init.body);
 			options.body ? type==="object" && init.body instanceof Stream ? new ReadableStreamClone(init.body) : Object.assign({},init.body) : init.body;
 			const totalBytes = getTotalBytes(init);

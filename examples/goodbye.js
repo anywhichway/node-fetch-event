@@ -1,24 +1,13 @@
+const message = "goodbye world!";
+
 async function handleRequest(request) {
-  const response = new Response("goodbye world");
+  const response = new Response(reverse(message));
 	response.headers.set("content-type","text/html");
 	return response;
 }
 
-const main = ({addEventListener,caches,fetch,Response,Request}) => {
-	addEventListener("fetch",(event) => {
-		const response = event.response;
-		if(response) {
-			response.headers.set("content-type","text/html");
-			response.end("goodbye world");
-			return response;
-		}
-		event.respondWith(handleRequest(event.request));
-	})
-}
+const reverse = requireFromUrl("http://localhost:8082/reverse.js");
 
-if(typeof(addEventListener)!=="undefined") {
-	var caches; // for Cloudflare
-	main({addEventListener,caches,fetch,Response,Request});
-} else {
-	module.exports = (scope) => main(scope);
-}
+addEventListener("fetch",(event) => {
+	event.respondWith(handleRequest(event.request));
+})

@@ -83,12 +83,12 @@ export default class Body {
 			body = Buffer.from(String(body));
 		}
 
-		this[INTERNALS] = {
+		Object.defineProperty(this,INTERNALS,{value:{
 			body,
 			boundary,
 			disturbed: false,
 			error: null
-		};
+		}});
 		this.size = size;
 
 		if (body instanceof Stream) {
