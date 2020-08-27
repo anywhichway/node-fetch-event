@@ -45,7 +45,8 @@ var	process,
 // requireFromUrl is provided by node-fetch-event
 if(typeof(requireFromUrl)!=="undefined") {
 
-	MYKV = // you will have to provde a substitute for the Cloudflare KV handler (we will have one soon!)
+	MYKV = 	// you will have to provde a substitute for the Cloudflare KV handler (we will have one soon!)
+			// but, if you are self hosting you could use any type of data store
 
 	// if your target environment supports node modules, you can require them
 	// the node-fetch-event server supports all NodeJS modules
@@ -104,7 +105,7 @@ Of course, you can provide options to control the server, e.g. `server(options)`
 	"protocol": "http" || "https" // https not yet supported
 	"hostname": // defaults to localhost
 	"port": // defaults to 3000
-	"maxServers": // default:1, maximum is automatically reduced to the number of cores on the computer where it is run
+	"maxServers": // default:1, maximum is automatically reduced to the number of cores on the computer where server is run
 	"standalone": // default:false (a cluster is created), use true to create a stanalone server that will shutdown (crash) on errors
 	"worker": // default:worker.js, the default worker file name for routes ending in /
 	"routes": // default:"/", optional, maps paths to specific workers, if missing, the value of worker is loaded
@@ -122,11 +123,11 @@ One of the key advantages of FAAS providers is their CDNs or distributed hosting
 then you can effectively have your own CDN by designating one server to be the source of your workers in the `workerSource` option. The `node-fetch-server` 
 will fetch new versions based on `maxAge` data in route specifications or `cacheWorkers`. 
 
-HINT: If you set cacheWorkers to false during development, you will not have to restarts your server when you change the worker code, just reload you browser.
+HINT: If you set `cacheWorkers` to false during development, you will not have to restart your server when you change the worker code, just reload your browser.
 
 ### Routes
 
-The server route specification is an object the keys of which are pathnames to match the request URL and values objects with the surface `{path,maxAge,timeout,maxIdle}`. The `maxAge` 
+The server route specification is an object the keys of which are pathnames to match the request URL and values, objects with the surface `{path,maxAge,timeout,maxIdle}`. The `maxAge` 
 property is in seconds and tells the server how long it can cache the worker. The `timeout` is in miliseconds and tells the server how long it should wait for a response
 prior to return an error to the client. The `maxIdle` is how long the server should let a worker be idle before stopping it. For example:
 
