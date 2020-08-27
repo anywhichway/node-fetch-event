@@ -24,6 +24,9 @@
 			"/message/:content": {
 				"path": "message?content=hello world",
 				"useQuery": true
+			},
+			"/kvstore": {
+				"path": "kvstore"
 			}
 		}
 	}

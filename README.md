@@ -1,20 +1,33 @@
 # node-fetch-event
 
-The `node-fetch-event` library is an implementation of the [FetchEvent](https://developer.mozilla.org/en-US/docs/Web/API/FetchEvent) paradigm used by several severless function providers. It is intended
-to serve as an open source means of:
+The `node-fetch-event` library is an implementation of the [FetchEvent](https://developer.mozilla.org/en-US/docs/Web/API/FetchEvent) paradigm used by several severless function providers. It is an open source means of:
 
 1) testing serverless functions in a local environment,
 
 2) moving serverless functions to alternate hosting operations should the capabilities of the severless provider not meet the business
 needs of the developer, e.g. memory or response time limits, access to additional `NodeJS` libraries, etc.
 
-3) developing services from scratch using the FetchEvent pattern.
+3) developing and hosting services from scratch using the `FetchEvent` pattern.
 
-The libray includes support for [Cache](https://developer.mozilla.org/en-US/docs/Web/API/Cache), routes, data stores, and other capabilities.
+The libray includes support for [Cache](https://developer.mozilla.org/en-US/docs/Web/API/Cache), routes, data stores (including built-in Cloudflare compatible KVStore), NodeJS modules.
 
 The code is currently in an ALPHA state.
 
-POrtions of this library are based on the stellar [node-fetch](https://www.npmjs.com/package/node-fetch) source code.
+Portions of this library are based on the stellar [node-fetch](https://www.npmjs.com/package/node-fetch) source code.
+
+[Installing](#installing)
+
+[Writing Code](#writing-code)
+
+[Running A Node Fetch Event Server](#running-a-node-fetch-event-server)
+
+[Routes](#routes)
+
+[Cache](#cache)
+
+[Environment Variables and Data Stores](#environment-variables-and-data-stores)
+
+[Internals](#internals)
 
 # Installing
 
@@ -32,7 +45,7 @@ The core functions behave, at a minimum, as one would expect:
 
 ## Writing Code
 
-Write your worker code as you normally would, except provide substitues for trget environment variables to ensure it can continue to be deployed to serverless hosts while also running in the `node-fetch-event` environment:
+Write your worker code as you normally would, except conditionalize target environment variables if you with to continue deployment to serverless hosts while also running in the `node-fetch-event` environment:
 
 ```javascript
 
@@ -49,15 +62,13 @@ var	process,
 // requireFromUrl is provided by node-fetch-event
 if(typeof(requireFromUrl)!=="undefined") {
 
-	MYKV = 	// you will have to provde a substitute for the Cloudflare KV handler (we will have one soon!)
-			// but, if you are self hosting you could use any type of data store
+	MYKV = 	new KVStore("mykv"); // KVStore is a Cloudflare compatible local key-value store
 
 	// if your target environment supports node modules, you can require them
 	// the node-fetch-event server supports all NodeJS modules
 	process = require("process");
 	
-	// you can also get remote modules, 
-	// in which case you will need to use the node-fetch-event server for hosting
+	// you can also use remote modules, 
 	reverse = requireFromUrl("http://localhost:8082/reverse.js");
 }
 
@@ -76,7 +87,7 @@ addEventListener("fetch",(event) => {
 })
 ```
 
-## Running A Note Fetch Event Server
+## Running A Node Fetch Event Server
 
 A server is provided as part of `node-fetch-event`, just start it from the command line or require it and it will start running:
 
@@ -119,7 +130,8 @@ Of course, you can provide options to control the server, e.g. `server(options)`
 					// can be overriden per route
 	"workerSource": // optional the host from which to serve workers, if not specifed first looks in `process.cwd()` and then `__directory`
 	"keys": // https cert and key paths or values {certPath, keyPath, cert, key}, not yet supported
-	"cacheStorage": // a storage engine to put behind the built in Cache class, the default is an in memory Map. Not yet implemented.
+	"cacheStorage": // a storage engine class to put behind the built in Cache class, the default is an in memory Map. Not yet implemented.
+	"kvStorage": // a storage engine class to put behind the built in KVStore class. Not yet implemented.
 }
 ```
 
@@ -129,7 +141,7 @@ will fetch new versions based on `maxAge` data in route specifications or `cache
 
 HINT: If you set `cacheWorkers` to false during development, you will not have to restart your server when you change the worker code, just reload your browser.
 
-### Routes
+## Routes
 
 The server route specification is an object the keys of which are pathnames to match the request URL and values, objects with the surface `{path,maxAge,timeout,maxIdle}`. The `maxAge` 
 property is in seconds and tells the server how long it can cache the worker. The `timeout` is in miliseconds and tells the server how long it should wait for a response
@@ -322,17 +334,22 @@ The `node-fetch-event` library includes support for [Cache](#cache), [Environmen
 
 There is a `Cache` implementaton as part of `node-fetch-event`. The `node-fetch-event` server always exposes `Cache`, `caches` and `caches.default`.
 
-By default `Cache` uses Map for its storage. You can replace this by setting  the startup option `cacheStorage` to any class that conforms to the 
+In the ALPHA version by default `Cache` uses Map for its storage. You can replace this by setting the startup option `cacheStorage` to any class that conforms to the 
 [MAP API](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map) with respect to `entries()`, `delete(key)`, `get(key)`, `keys()` and `set(key,value)`. 
 The `Cache` wrapper does type checking and conversion.
 
 ### Environment Variables and Data Stores
 
-To expose environment variables, which may be bound to data stores and other things, add them to the items exposed by the `node-fetch-event` server. In some cases, e.g. `Cloudflare`, your
-hosting provider will automatically add them to your serveles function. If not, you will also need to add them to the default values exposed to `main`.
+In some cases, e.g. `Cloudflare`, your hosting provider will automatically add variables to your serverless function. If not, you will also need to conditionally add them.
 
-``
-var MYSECRET = "don't tell";
+The `node-fetch-event` server exposes `KVStore` with the same API as [Cloudflare)[https://developers.cloudflare.com/workers/runtime-apis/kv]. However, in the ALPHA the
+storage is just local to the server and the `limit` and `cursor` options to `list` are ignored.
+
+```
+var MYSECRET;
+if(typeof(requireFromUrl)!=="undefined") {
+	MYSECRET = "don't tell";
+}
 
 async function handleRequest(request) {
 	return new Response("hello world");
@@ -347,6 +364,23 @@ addEventListener("fetch",(event) => {
 	}
 	event.respondWith(handleRequest(event.request));
 })
+```
+
+```
+// no need to conditionalize if you are not worried about hosting on something other than `node-fetch-event`s server.
+var MYKV = new KVStore("testkv");
+
+async function handleRequest(request) {
+	await MYKV.put("test",{test:1});
+	const value = await MYKV.get("test");
+	return new Response(JSON.stringify(value),{headers:{"content-type":"application/json"}})
+}
+
+
+addEventListener("fetch",(event) => {
+	event.respondWith(handleRequest(event.request));
+})
+```
 
 ## Response Pseudo Streaming
 
@@ -359,9 +393,15 @@ If a Response is created with an `undefined` value, the `Response` objects in `n
 These DO NOT immediately stream to the client, they just sit on a stream inside the Response. Internally, the Response creates a readable stream on a buffer into which data is pushed
 by `write` and `end`. This can be conveniently processed by the standard body reading methods.
 
-Note: Use `new Response()` or `new Response(undefined,options)` not `new Response(null)` to get this behavior. 
+Note: Use `new Response()` or `new Response(undefined,options)` not `new Response(null)` to get this behavior.
+
+## Internals
+
+Internally, the `node-fetch-event` server isolates the execution of requested routes to Node `worker_threads` and runs it's http(s) request handler using Node `cluster`.
 
 ## Release History (reverse chronological order)
+
+2020-08-27 v0.0.5a Added KVStore. Improved documentation.
 
 2020-08-26 v0.0.4a Improved routing
 

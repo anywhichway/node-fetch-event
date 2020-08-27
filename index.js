@@ -51,6 +51,7 @@ async function initializeWorker(source,{cacheWorkers,workerPath,maxIdle=60000}) 
 		import addEventListener from "${root}/add-event-listener.js";
 		import FetchEvent from "${root}/fetch-event.js";
 		import Cache from "${root}/cache.js";
+		import KVStore from "${root}/kv-store.js";
 		import { parentPort } from "worker_threads";
 		const caches = {
 			default:new Cache()
