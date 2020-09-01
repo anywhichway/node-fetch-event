@@ -47,7 +47,7 @@ The code is currently in an BETA state and has not yet been tested on Windows.
 
 # Usage
 
-The core functions behave as defined below:
+The core functions behave as defined by Cloudflare:
 
 1) [addEventListener](https://developers.cloudflare.com/workers/runtime-apis/add-event-listener)
 
@@ -55,7 +55,7 @@ The core functions behave as defined below:
 
 3) [event.waitUntil](https://developers.cloudflare.com/workers/runtime-apis/fetch-event#methods)
 
-4) [event.passThroughOnException](https://developers.cloudflare.com/workers/runtime-apis/fetch-event#methods) is not supported. Use the gloabl server option `workerFailureMode` instead.
+4) [event.passThroughOnException](https://developers.cloudflare.com/workers/runtime-apis/fetch-event#methods) is not supported. Use the global server option `workerFailureMode` instead.
 
 ## Writing Code
 
@@ -91,12 +91,6 @@ async function handleRequest(request) {
 }
 
 addEventListener("fetch",(event) => {
-	const response = event.response;
-	if(response) {
-		response.headers.set("content-type","text/html");
-		response.end("hello world");
-		return response;
-	}
 	event.respondWith(handleRequest(event.request));
 })
 ```
@@ -105,8 +99,8 @@ addEventListener("fetch",(event) => {
 
 A server is provided as part of `node-fetch-event`. Just start it from the command line or require it and it will start running:
 
-```javascript
-node -r esm ./node_modules/node-fetch-event/server.js // index
+```
+node -r esm ./node_modules/node-fetch-event/server.js
 ```
 
 or
@@ -136,30 +130,29 @@ Of course, you can provide options to control the server, e.g. `server(options)`
 	"port": // defaults to 3000
 	"maxServers": // default:1, maximum is automatically reduced to the number of cores on the computer where server is run
 				  // strongly recommended to use 2 or more to have a cluster that will restart on errors
-	"routes": // default:"/", optional, maps paths to specific workers, if missing, the value of worker is loaded
-	"defaultWorkerName": // default:worker, the default worker file name (without .js extension) for routes ending in /
+	"defaultWorkerName": // default:"worker", the default worker file name (without .js extension) for routes ending in /
+	"routes": // default:"/", optional, maps paths to specific workers, if missing, the value of defaultWorkerName is loaded
 	"cacheWorkers": // default:false, a new worker is loaded for every request,
 					// if true (for production) the worker is cached after the first load,
 					// if a number, assumes to be seconds at which to invalidate cache for a worker
 					// can be overriden per route
 	"workerSource": // optional, the host from which to serve workers, if not specifed assumes files in `process.cwd()` and then `__directory`
-	"workerFailureMode": open || error || closed, 
+	"workerFailureMode": "open" || "error" || "closed", 
 					// default: open, returns a 500 error with no message, 
-					// error returns a 500 error with Error thrown by worker, 
+					// error returns a 500 error with Error thrown by worker, recommended while in BETA
 					// closed (or any other value) never responds, requesting client may hang,
 	"workerLimits": { // default resource limits for Workers, may be overriden at route level
 		"maxAge": // optional, max cachng time before a new verson of the worker is loaded
 		"maxIdle": 60000, // default: 1 minute, worker terminated if no requests in the period
 		"maxTime": 15000, // default: 15 seconds ,overages abort the request
 		"cpuUsage": 10, // default: 10ms, max CPU usage for an individual request, overages abort the request
-		"maxOldGenerationSizeMb": 256 // default: 256mb ,overages abort the request
-		"maxYoungGenerationSizeMb": 256 // default: 256mb ,overages abort the request
-		"stackSizeMb": 4, // default: 4 MB??, overages abort the request
-		"codeRangeSizeMb": 2, // default: 2mb,  ,overages abort the request
+		"maxOldGenerationSizeMb": 256 // default: 256mb,coverages abort the request
+		"maxYoungGenerationSizeMb": 256 // default: 256mb, overages abort the request
+		"stackSizeMb": 4, // default: 4 MB, overages abort the request
+		"codeRangeSizeMb": 2, // default: 2mb, overages abort the request
 	},
 	"keys": // https cert and key paths or values {certPath, keyPath, cert, key}, not yet supported
-	"cacheStorage": // a storage engine class to put behind the built-in Cache class, the default is a local file system store.
-	"kvStorage": // a storage engine class to put behind the built in KVStore class. Not yet implemented. Will support a remote centralized server.
+	"kvStorage": // a storage engine class to put behind the built in KVStore class. Not yet implemented. Will support a remote, centralized, eventually consistent server.
 }
 ```
 
@@ -169,14 +162,16 @@ will fetch new versions based on `maxAge` data in route specifications or `cache
 
 HINT: If you set `cacheWorkers` to false during development, you will not have to restart your server when you change the worker code, just reload your browser.
 
-Note: `workerFailureMode` may not work as expected during BETA. With clustering and Workers, the `node-fetch-event` server is very rresilibe to crashes, but they could occur.
+Note: `workerFailureMode` may not work as expected during BETA. With clustering and Workers, the `node-fetch-event` server is very resilient to crashes, but they could occur.
 
 ## Routes
 
-The server route specification is an object the keys of which are pathnames to match the request URL and values, objects with the surface `{path,maxAge,timeout,maxIdle,useQuery}`. The `maxAge` 
-property is in seconds and tells the server how long it can cache the worker. The `timeout` is in miliseconds and tells the server how long it should wait for a response
-prior to return an error to the client. The `maxIdle` is how long the server should let a worker be idle before stopping it. THe `useQuery` flag tells the server to parse quiery string values 
-into parameters to pass to the Worker. For example:
+The server route specification is an object the keys of which are pathnames to match the request URL and values, objects with the surface 
+`{path,useQuery,maxAge,timeout,maxIdle,maxTime,cpuUsage,maxOldGenerationSizeMb,maxYoungGenerationSizeMb,stackSizeMb,codeRangeSizeMb}`. 
+`path` can be relative to the directory from which the server is running, or a remote URL. The `useQuery` flag tells the server to parse query string values into parameters to pass to the Worker, 
+see [Routes and Query Strings](#routes-and-query-strings). See the server options documentation, `workerLimits`, for definitions of other route options.
+
+Here is a bsic example:
 
 ```javascript
 {
@@ -445,6 +440,8 @@ using Node `cluster`.
 In addition to the dependencies in `package.json`, portions of this library use source code from the stellar [node-fetch](https://www.npmjs.com/package/node-fetch).
 
 ## Release History (reverse chronological order)
+
+2020-09-01 v0.0.2b Documentation updates.
 
 2020-09-01 v0.0.1b Added unit tests. Fully implemented `CacheStorage` with expection of `{ignoreSearch,ignoreMethod,ignoreVary}`.
 
