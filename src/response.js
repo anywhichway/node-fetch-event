@@ -155,6 +155,11 @@ class Response extends Body {
 		}
 		return false;
 	}
+	toJSON() {
+		const object = {};
+		Object.entries(this[INTERNALS]).forEach(([key,value]) => value==null || (object[key] = value.toJSON ? value.toJSON() : value));
+		return object;
+	}
 }
 
 export { Response as default, Response };

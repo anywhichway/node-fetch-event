@@ -91,10 +91,10 @@ async function initializeWorker(source,{
 						//const now = Date.now();
 						//while (Date.now() - now < cpuUsage);
 						/* end test cpu spin */
-						// move earlier, perhaps interval or first then on response
+						// move earlier, perhaps interval
 						const {user,system} = process.cpuUsage(previousUsage),
 							used = (user+system)/1000;
-						console.log(used,user,system,cpuUsage)
+						//console.log(used,user,system,cpuUsage)
 						if(used>cpuUsage) {
 							// "Max CPU time ${cpuUsage} exceeded:" + used
 							parent.port.close(1)

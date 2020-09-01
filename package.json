@@ -1,6 +1,6 @@
 {
 	"name": "node-fetch-event",
-	"version": "0.0.7a",
+	"version": "0.0.1b",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/anywhichway/node-fetch-event.git"
@@ -27,6 +27,7 @@
 		"esm": "^3.2.25",
 		"fetch-blob": "^2.1.1",
 		"formdata-node": "^2.2.2",
+		"glob": "^7.1.6",
 		"node-fetch": "^2.6.0",
 		"node-persist": "^3.1.0",
 		"node-webcrypto-ossl": "^2.1.1",

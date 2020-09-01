@@ -1,31 +1,28 @@
 const fs = require("fs").promises;
 const fetch = require("node-fetch");
+const glob = require("glob");
 import Request from "./request.js";
 import Response from "./response.js";
 import AsyncStorage from "./async-storage.js";
 
-async function requestToJSON(response) {
-	const json = Object.assign({},response);
-	json.headers = response.headers.toJSON();
-	json.body = await resolveBody(response);
+async function serializable(source) {
+	const json = source.toJSON();
+	json.body = await resolveBody(source);
 	return json;
 }
 
-async function responseToJSON(response) {
-	const json = Object.assign({},response);
-	json.headers = response.headers.toJSON();
-	json.body = await resolveBody(response);
-	return json;
-}
-
-async function resolveBody(response) {
-	if(typeof(response.blob)==="function") {
-		return response.blob();
+async function resolveBody(source) {
+	if(typeof(source.blob)==="function") {
+		const blob = await source.blob();
+		if(blob) {
+			return blob.text();
+		}
+		return null;
 	}
-	if(typeof(response.text)==="function") {
-		return reponse.text();
+	if(typeof(source.text)==="function") {
+		return source.text();
 	}
-	return JSON.stringify(response.body);
+	return JSON.stringify(source.body);
 }
 
 function getTtl(response) {
@@ -69,9 +66,11 @@ function isURL(url) {
 	}
 }
 
+const cachedir = "cache-storage";
+
 class Cache extends AsyncStorage {
 	constructor(cacheName) {
-		super(`cache-storage.${cacheName}`);
+		super(`${cachedir}.${cacheName}`);
 		delete this.storage;
 		delete this.getItem;
 		delete this.setItem;
@@ -125,12 +124,12 @@ class Cache extends AsyncStorage {
 		}
 		const type = typeof(urlOrRequest),
 			url = type==="string" ? urlOrRequest : urlOrRequest.url,
-			request = await requestToJSON(type==="string" ? new Request(urlOrRequest) : urlOrRequest),
+			request = await serializable(type==="string" ? new Request(urlOrRequest) : urlOrRequest),
 			ttl = getTtl(response);
 		if(ttl<=0) { // undefined would be ok
 			return;
 		}
-		response = await responseToJSON(response);
+		response = await serializable(response);
 		return super.storage().then(storage => storage.setItem(url,{request,response},{ttl}));
 	}
 	async match(urlOrRequest,{ignoreSearch,ignoreMethod,ignoreVary}={}) {
@@ -159,14 +158,32 @@ class Cache extends AsyncStorage {
 
 class CacheStorageInterface {
 	async delete(cacheName) {
-		
+		if(await this.has(cacheName)) {
+			await fs.rmdir(`${cachedir}.${cacheName}`,{recursive:true});
+			return true;
+		}
+		return false;
 	}
 	async has(cacheName) {
-		
+		return new Promise((resolve,reject) => {
+			const pattern = `${cachedir}.${cacheName}`;
+			glob(pattern,(err,filenames) => {
+				if(err) {
+					reject(err);
+				} else {
+					resolve(filenames[0]===pattern);
+				}
+			})});
 	}
 	async keys() {
-		const cacheNames = [];
-		return cacheNames;
+		return new Promise((resolve,reject) => {
+			glob(`${cachedir}.*`,(err,filenames) => {
+				if(err) {
+					reject(err);
+				} else {
+					resolve(filenames.map(filename => filename.substring(cachedir.length+1)));
+				}
+			})});
 	}
 	async match(request,{ignoreSearch,ignoreMethod,ignoreVary,cacheName}) {
 		const caches = cacheName ? [cacheName] : await this.keys();

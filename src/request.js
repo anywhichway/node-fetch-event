@@ -72,9 +72,13 @@ class Request extends Body {
 		// makw this more specific
 		Object.entries(options).forEach(([key,value]) => key==="body" || Object.defineProperty(this,key,{enumerable:true,value}))
 	}
-
 	clone() {
 		return new Request(this.url,this);
+	}
+	toJSON() {
+		const object = {};
+		Object.entries(this).forEach(([key,value]) => value==null || (object[key] = value.toJSON ? value.toJSON() : value));
+		return object;
 	}
 }
 

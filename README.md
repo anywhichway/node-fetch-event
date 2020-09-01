@@ -21,7 +21,7 @@ and importing/requiring almost any NodeJS module.
 
 The library exposes the ability to control the idle time, heap, stack, code size, response time, and CPU usage allowed for any request response.
 
-The code is currently in an BETA state.
+The code is currently in an BETA state and has not yet been tested on Windows.
 
 [Acknowledgements](#acknowledgements)
 
@@ -237,7 +237,6 @@ Route values can be selected based on the lowercase form of the request method:
 
 Top level route selection can also be based on the lowercase form of the request method:
 
-
 ```javascript
 {
 	"get": {
@@ -352,7 +351,6 @@ arrays you will need to quote propertys and values.
 It is also possible to just use the route query string for passing parameters without setting `useQuery` to true. This is made possible because it is assumed you have complete control over the route
 file, whereas you may want to explicilty exclude client query strings as an attack vector.
 
-
 ```javascript
 {
 	"/message": {
@@ -360,7 +358,6 @@ file, whereas you may want to explicilty exclude client query strings as an atta
 	}
 }
 ```
-
 ### Parameterized Routes
 
 Routes can also contain parameters, e.g.:
@@ -375,13 +372,15 @@ Routes can also contain parameters, e.g.:
 
 The values in a the client query string will take priority over those from the route. The value in a route query string (as the defaults) will be ignored if set by parameter parsing.
 
-
 ## Cache
 
 There is a `CacheStorage` implementaton as part of `node-fetch-event`. The `node-fetch-event` server always exposes `CacheStorage`, `Cache`, `caches` and `caches.default`.
 
-`Cache` persists to disk as subdirectories of a the directory `__directory/Cache`. `Cache-Control` and `Expires` headers are respected. The only function currently implemented
-for `CacheStorage` is `open`. `Cache` is fully implemented.
+`Cache` persists to disk as subdirectories of a the directory `__directory/cache-storage`. `Cache-Control` and `Expires` headers are respected.
+
+`Caches` are shared across the server cluster and Workers.
+
+In the current version of the BETA, the options `{ignoreSearch,ignoreMethod,ignoreVary}` are ignored. Only URL paths are matched.
 
 ## Environment Variables and Data Stores
 
@@ -397,16 +396,10 @@ if(typeof(requireFromUrl)!=="undefined") {
 }
 
 async function handleRequest(request) {
-	return new Response("hello world");
+	return new Response(MYSECRET);
 }
 
 addEventListener("fetch",(event) => {
-	const response = event.response;
-	if(response) {
-		response.headers.set("content-type","text/html");
-		response.end(MYSECRET);
-		return response;
-	}
 	event.respondWith(handleRequest(event.request));
 })
 ```
@@ -421,7 +414,6 @@ async function handleRequest(request) {
 	return new Response(JSON.stringify(value),{headers:{"content-type":"application/json"}})
 }
 
-
 addEventListener("fetch",(event) => {
 	event.respondWith(handleRequest(event.request));
 })
@@ -435,12 +427,12 @@ If a Response is created with an `undefined` value, the `Response` objects in `n
 
 2) `end`
 
-These DO NOT immediately stream to the client, they just sit on a stream inside the Response. Internally, the Response creates a readable stream on 
+These DO NOT immediately stream to the client, they just sit on a stream inside the `Response`. Internally, the `Response` creates a readable stream on 
 a buffer into which data is pushed by `write` and `end`. This can be conveniently processed by the standard body reading methods.
 
 Note: Use `new Response()` or `new Response(undefined,options)` not `new Response(null)` to get this behavior.
 
-You can also create Responses with writable streams. When returned by `respondWith`, the stream is considered complete and the buffer underlying 
+You can also create `Responses` with writable streams. When returned by `respondWith`, the stream is considered complete and the buffer underlying 
 the stream is written to the client. Continued attempts to write to the buffer will result in illdefined behavior.
 
 ## Internals
@@ -453,6 +445,8 @@ using Node `cluster`.
 In addition to the dependencies in `package.json`, portions of this library use source code from the stellar [node-fetch](https://www.npmjs.com/package/node-fetch).
 
 ## Release History (reverse chronological order)
+
+2020-09-01 v0.0.1b Added unit tests. Fully implemented `CacheStorage` with expection of `{ignoreSearch,ignoreMethod,ignoreVary}`.
 
 2020-08-31 v0.0.7a Added unit tests and fixed numerous issues as a result. 
 	Add CacheStorage. Eliminated setting backing store for `Cache` (for now).

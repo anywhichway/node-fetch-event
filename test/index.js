@@ -151,6 +151,13 @@ describe("Response",function() {
 		response = new Response(response);
 		expect(response).to.be.instanceof(Response);
 	});
+	it("new - with text body",async () => {
+		const body = "test";
+		response = new Response(body);
+		expect(response).to.be.instanceof(Response);
+		const text = await response.text();
+		expect(text).to.equal(body);
+	});
 	it("new - with JSON body",async () => {
 		const body = {test:"test"};
 		response = new Response(JSON.stringify(body));
@@ -168,16 +175,15 @@ describe("Response",function() {
 		expect(response.body).to.equal(stream);
 	});
 	it("isResponse - instance", async () => {
-		response = new Response("http://localhost/index.html");
+		response = new Response("test",{url:"http://localhost/index.html"});
 		expect(Response.isResponse(response)).to.equal(true);
 	})
 	it("isResponse - relaxed", async () => {
-		response = new Response("http://localhost/index.html");
-		const object = Object.assign({},response);
-		expect(Response.isResponse(object,true)).to.equal(true);
+		response = new Response("test",{url:"http://localhost/index.html"});
+		expect(Response.isResponse(response.toJSON(),true)).to.equal(true);
 	})
 	it("isResponse - by contructor", async () => {
-		response = new Response("http://localhost/index.html");
+		response = new Response("test",{url:"http://localhost/index.html"});
 		const object = Object.assign({},response);
 		object.constructor = Response,
 		expect(Response.isResponse(object)).to.equal(true);
@@ -191,6 +197,19 @@ describe("CacheStorage",function() {
 	it("open",async () => {
 		store = await CacheStorage.open("test");
 		expect(store).to.be.instanceof(Cache);
+	})
+	it("has",async () => {
+		const result = await CacheStorage.has("test");
+		expect(result).to.equal(true);
+	});
+	it("has - fail",async () => {
+		const result = await CacheStorage.has("test1");
+		expect(result).to.equal(false);
+	})
+	it("keys",async () => {
+		const keys = await CacheStorage.keys();
+		expect(keys.length).to.equal(1);
+		expect(keys[0]).to.equal("test");
 	})
 	it("put/match",async () => {
 		const request = new Request("http://localhost/index.html"),
@@ -207,7 +226,7 @@ describe("CacheStorage",function() {
 		result = await store.match("http://localhost/index.html");
 		expect(result).to.equal(undefined);
 	});
-	it("expiration",(done) => {
+	it("expiration - expires",(done) => {
 		const request = new Request("http://localhost/index.html"),
 			response = new Response("test",{url:"http://localhost/index.html",headers:{"cache-control":"max-age=1"}});
 		store.put(request,response);
@@ -216,5 +235,29 @@ describe("CacheStorage",function() {
 			expect(result).to.equal(undefined);
 			done();
 		},2000);
-	}).timeout(3000)
+	}).timeout(3000);
+	it("expiration - not expires",(done) => {
+		const request = new Request("http://localhost/index.html"),
+			response = new Response("test",{url:"http://localhost/index.html",headers:{"cache-control":"max-age=10"}});
+		store.put(request,response);
+		setTimeout(async () => {
+			const result = await store.match("http://localhost/index.html");
+			expect(result).to.be.instanceof(Response);
+			const test = await result.text();
+			expect(test).to.equal("test");
+			done();
+		},2000);
+	}).timeout(3000);
+	it("delete",async () => {
+		const result = await CacheStorage.delete("test");
+		expect(result).to.equal(true);
+	});
+	it("delete - fail",async () => {
+		const result = await CacheStorage.delete("test");
+		expect(result).to.equal(false);
+	});
+	it("delete - fail (never existed)",async () => {
+		const result = await CacheStorage.delete("test1");
+		expect(result).to.equal(false);
+	});
 });
