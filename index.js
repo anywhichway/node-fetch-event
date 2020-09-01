@@ -18,7 +18,7 @@ const protocols = {
 	https: require("https")
 }
 
-const workerCache = {};
+
 
 function runService(worker,data) {
 	let resolver,
@@ -37,7 +37,17 @@ function runService(worker,data) {
 	return promise;
 }
 
-async function initializeWorker(source,{cacheWorkers,workerPath,maxIdle=60000}) {
+async function initializeWorker(source,{
+		cacheWorkers,
+		workerPath,
+		workerCache,
+		maxIdle=60000,
+		maxYoungGenerationSizeMb=256,
+		maxOldGenerationSizeMb=256,
+		stackSizeMb=4,
+		//stackDepth, // should we, can we add stackDepth control
+		codeRangeSizeMb=2,
+		cpuUsage=5000}) {
 	let root = `node-fetch-event`;
 		try {
 			require(root);
@@ -46,21 +56,21 @@ async function initializeWorker(source,{cacheWorkers,workerPath,maxIdle=60000}) 
 		}
 	const code = `
 		import { parentPort } from "worker_threads";
-		try {
-			const requireFromUrl = require('require-from-url/sync'),
+		import { TextEncoder, TextDecoder } from "util";
+		const requireFromUrl = require('require-from-url/sync'),
 				crypto = new require("node-webcrypto-ossl"),
 				{ atob, btoa } = require('abab'),
 				fetch = require("node-fetch");
-			import { TextEncoder, TextDecoder } from "util";
-			import Request from "${root}/request.js";
-			import Response from "${root}/response.js";
-			import addEventListener from "${root}/add-event-listener.js";
-			import FetchEvent from "${root}/fetch-event.js";
-			import Cache from "${root}/cache.js";
-			import KVStore from "${root}/kv-store.js";
-			
+		import Request from "${root}/request.js";
+		import Response from "${root}/response.js";
+		import addEventListener from "${root}/add-event-listener.js";
+		import FetchEvent from "${root}/fetch-event.js";
+		import {CacheStorage, Cache} from "${root}/cache-storage.js";
+		import KVStore from "${root}/kv-store.js";
+		const cpuUsage = ${cpuUsage};
+		try {
 			const caches = {
-				default:new Cache()
+				default: new Cache("default")
 			};
 			${source};
 			parentPort.on("message",(workerData) => {
@@ -68,33 +78,54 @@ async function initializeWorker(source,{cacheWorkers,workerPath,maxIdle=60000}) 
 					parentPort.close();
 					return;
 				}
-				const data = JSON.parse(workerData),
+				const previousUsage = process.cpuUsage(),
+					data = JSON.parse(workerData),
 					__fetchevent__ = new FetchEvent({request:new Request(data.url,data)});
 				if(data.params) {
 					Object.defineProperty(__fetchevent__.request,"params",{value:data.params});
 				}
 				addEventListener.fetch(__fetchevent__);
-				__fetchevent__.response.then(async (response) => {
-					const body = await response.text(),
-						options = Object.assign({},response);
-					if(body!=null && body!=="undefined") {
-						options.body = body;
-					}
-					parentPort.postMessage(JSON.stringify(options));
-					await Promise.all(__fetchevent__.awaiting);
-				}).catch(e => {
-					parentPort.close(e+"");
-				});
+				__fetchevent__.response
+					.then(async (response) => {
+						/* test cpu spin */
+						//const now = Date.now();
+						//while (Date.now() - now < cpuUsage);
+						/* end test cpu spin */
+						// move earlier, perhaps interval or first then on response
+						const {user,system} = process.cpuUsage(previousUsage),
+							used = (user+system)/1000;
+						console.log(used,user,system,cpuUsage)
+						if(used>cpuUsage) {
+							// "Max CPU time ${cpuUsage} exceeded:" + used
+							parent.port.close(1)
+						} else {
+							const body = await response.text(),
+							options = Object.assign({},response);
+							options.headers = response.headers.toJSON();
+							if(body!=null && body!=="undefined") {
+								options.body = body;
+							}
+							parentPort.postMessage(JSON.stringify(options));
+							await Promise.all(__fetchevent__.awaiting);
+						}
+					}).catch(e => {
+						const options = {status:500};
+						options.body = e + " " + e.stack;
+						parentPort.postMessage(JSON.stringify(options));
+						parentPort.close(1);
+					});
 			});
 		} catch (e) {
-			//parentPort.postMessage();
-			parentPort.close(e+"");
+			const options = {status:500};
+			options.body = e + " " + e.stack;
+			parentPort.postMessage(JSON.stringify(options));
+			parentPort.close(1);
 		}`;
 	let worker;
 	try {
-		worker = new Worker(code, {eval:true});
+		worker = new Worker(code, {eval:true,resourceLimits:{maxYoungGenerationSizeMb,maxOldGenerationSizeMb,codeRangeSizeMb,stackSizeMb}});
 	} catch(e) {
-		console.log(e);
+		console.log("Worker Error:" + e);
 	}
 	worker.hit = Date.now();
 	setInterval(() => {
@@ -125,14 +156,32 @@ async function initializeWorker(source,{cacheWorkers,workerPath,maxIdle=60000}) 
 	return worker;
 }
 
-function server({protocol="http",hostname="localhost",port=3000,maxServers=1,keys={},worker="worker",standalone,cacheWorkers,workerSource,routes="*",workerFailureMode="open"},cb) {
-		const createServer = () => { 
-			protocols[protocol].createServer(async (req,res) => {
-				try {
+function server({
+		protocol="http",
+		hostname="localhost",
+		port=3000,
+		maxServers=4,
+		keys={},
+		defaultWorkerName="worker",
+		cacheWorkers,
+		workerSource,
+		workerLimits={},
+		workerFailureMode="open",
+		workerFailureErrorHeaders={"allow-origin":"*"},
+		routes="*"
+		},cb) {
+	const createServer = () => {
+		const workerCache = {},
+			serverLimits = workerLimits;
+		protocols[protocol].createServer(async (req,res) => {
+			let finalresponse;
+			try {
 				const request = new Request(req),
 					response = new Response(res),
 					event = new FetchEvent({request,response});
-				let {path,maxAge,timeout,maxIdle,params,useQuery} = route(routes,request,worker)||{};
+				let {path,workerLimits={},params,useQuery} = route(routes,request,defaultWorkerName)||{};
+				const limits = Object.assign({},serverLimits,workerLimits),
+					{maxAge,maxTime} = limits;
 				if(!path) {
 					res.status = 404;
 					res.end();
@@ -191,7 +240,7 @@ function server({protocol="http",hostname="localhost",port=3000,maxServers=1,key
 						}
 						const text = await response.text();
 						if(text.includes("addEventListener")) {
-							theworker = await initializeWorker(text,{cacheWorkers,workerPath,maxIdle});
+							theworker = await initializeWorker(text,Object.assign({},{cacheWorkers,workerPath,workerCache},limits));
 						} else {
 							// respond with text
 						}
@@ -206,7 +255,7 @@ function server({protocol="http",hostname="localhost",port=3000,maxServers=1,key
 						if(!source) {
 							const text = await fs.readFile(workerPath);
 							if(text.includes("addEventListener")) {
-								theworker = await initializeWorker(text,{cacheWorkers,workerPath,maxIdle});
+								theworker = await initializeWorker(text,Object.assign({},{cacheWorkers,workerPath,workerCache},limits));
 							} else {
 								// respond with error
 							}
@@ -220,7 +269,7 @@ function server({protocol="http",hostname="localhost",port=3000,maxServers=1,key
 						if(!source) {
 							const text = await fs.readFile(workerPath);
 							if(text.includes("addEventListener")) {
-								theworker = await initializeWorker(text,{cacheWorkers,workerPath,maxIdle});
+								theworker = await initializeWorker(text,Object.assign({},{cacheWorkers,workerPath,workerCache},limits));
 							} else {
 								// respond with error
 							}
@@ -231,59 +280,78 @@ function server({protocol="http",hostname="localhost",port=3000,maxServers=1,key
 					}
 				}
 				if(!theworker) {
-					theworker = await initializeWorker(thesource,{cacheWorkers,workerPath,maxIdle});
+					theworker = await initializeWorker(thesource,Object.assign({},{cacheWorkers,workerPath,workerCache},limits));
 				}
-				const options = Object.assign({},request,{params}),
+				const runoptions = Object.assign({},request,{params}),
 						body = await request.text();
-				if(body!=="undefined") {
-					options.body = body;
+				if(body!=="undefined" && body!=="") {
+					runoptions.body = body;
 				}
-				const result = JSON.parse((await runService(theworker,options))||"null"),
-					finalresponse = new Response(result);
-				if(!result) {
-					throw TypeError("respondWith did not return a Response");
+				let timeout;
+				if(maxTime) {
+					timeout = setTimeout(() => {
+						worker.postMessage("close");
+					},maxTime)
+				}
+				const result = (await runService(theworker,runoptions))||"null";
+				clearTimeout(timeout);
+				let json;
+				try {
+					json = JSON.parse(result);
+				} catch(e) {
+					
+				}
+				finalresponse = json ? new Response(json) : new Response("respondWith did not return a Response",{status:500});
+				await Promise.all(event.awaiting);
+			} catch(e) {
+				if(workerFailureMode==="open") {
+					finalresponse = new Response(null,{status:500});
+				} else if(workerFailureMode==="error") {
+					finalresponse = new Response(e+"\n"+e.stack,{status:500});
+				}
+				// else swallow and become non-responsive to request
+			}
+			if(finalresponse) {
+				if(finalresponse.status>=500 && workerFailureMode==="error" && workerFailureErrorHeaders) {
+					Object.entries(workerFailureErrorHeaders).forEach(([key,value]) => finalresponse.headers.set(key,value))
+				}
+				res.statusCode = finalresponse.status;
+				res.statusMessage = finalresponse.statusText;
+				for(const [key,value] of finalresponse.headers.entries()) {
+					res.setHeader(key,value);
 				}
 				if(finalresponse.body instanceof stream.Readable) {
 					finalresponse.body.on('data', chunk => res.write(chunk));
 					finalresponse.body.on('end', () => {
 						res.end();
 					})
+				} else if(finalresponse.body instanceof stream.Writable)  {
+					res.end(finalresponse.body.writableBuffer);
 				} else {
 					res.end(await finalresponse.text());
 				}
-				await Promise.all(event.awaiting);
-				} catch(e) {
-					if(workerFailureMode==="open") {
-						res.statusCode = 500;
-						res.end();
-					} else if(workerFailureMode==="error") {
-						res.write(e+"");
-						res.end();
-					}
-					// else swallow and become non-responsive to request
-				}
-			}).listen(port,hostname);
-		};
-			
-	if(standalone) {
-		createServer();
-		if(cb) {
-			cb({processId:process.pid,maxServers,protocol,port,hostname,standalone,cacheWorkers,workerSource})
-		}
-	} else {
+			}
+		}).listen(port,hostname);
+	};
+	if(maxServers>=2) {
 		if (cluster.isMaster) {
-		for (let i = 0; i < Math.min(numCPUs,maxServers); i++) {
-			cluster.fork();
-		}
-		if(cb) {
-			cb({processId:process.pid,maxServers,protocol,port,hostname,standalone,cacheWorkers,workerSource})
-		}
-		cluster.on("exit", (worker, code, signal) => {
-				console.log(`worker ${worker.process.pid} died ${code} ${signal}`);
+			for (let i = 0; i < Math.min(numCPUs,maxServers); i++) {
 				cluster.fork();
-			});
+			}
+			if(cb) {
+				cb({processId:process.pid,maxServers,protocol,port,hostname,cacheWorkers,workerSource})
+			}
+			cluster.on("exit", (worker, code, signal) => {
+					console.log(`worker ${worker.process.pid} died ${code} ${signal}`);
+					cluster.fork();
+				});
 		} else {
 			createServer();
+		}
+	} else {
+		createServer();
+		if(cb) {
+			cb({processId:process.pid,maxServers,protocol,port,hostname,cacheWorkers,workerSource})
 		}
 	}
 }

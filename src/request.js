@@ -7,6 +7,15 @@ import Headers from "./headers.js";
 import Body, {getTotalBytes} from "./body.js";
 
 class Request extends Body {
+	static isRequest(request,relaxed) {
+		if(!request || typeof(request)!=="object") {
+			return false;
+		}
+		if(relaxed && typeof(request.url)==="string" && typeof(request.method)==="string" && Headers.isHeaders(request.headers,relaxed)) {
+			return true;
+		}
+		return request instanceof Request || request.constructor.name==="Request";
+	}
 	constructor(input, init = {}) {
 		const type = typeof(input);
 		
@@ -39,13 +48,13 @@ class Request extends Body {
 		}
 		
 		let contentLengthValue = null;
-		if (init.body === null && /^(post|put)$/i.test(request.method)) {
+		if (init.body == null && /^(post|put)$/i.test(options.method)) {
 			contentLengthValue = "0";
 		}
 	
 		if (init.body != null) {
 			const type = typeof(init.body);
-			options.body ? type==="object" && init.body instanceof Stream ? new ReadableStreamClone(init.body) : Object.assign({},init.body) : init.body;
+			options.body = type==="object" && init.body instanceof Stream ? new ReadableStreamClone(init.body) : init.body;
 			const totalBytes = getTotalBytes(init);
 			if (typeof totalBytes === "number" && !Number.isNaN(totalBytes)) {
 				contentLengthValue = String(totalBytes);
@@ -56,11 +65,12 @@ class Request extends Body {
 			headers.set("Content-Length", contentLengthValue);
 		}
 		
-		super(options.body, {
+		super(options.body===undefined ? null : options.body, {
 			size: init.size || 0
 		})
 		
-		Object.entries(options).forEach(([key,value]) => Object.defineProperty(this,key,{enumerable:true,value}))
+		// makw this more specific
+		Object.entries(options).forEach(([key,value]) => key==="body" || Object.defineProperty(this,key,{enumerable:true,value}))
 	}
 
 	clone() {

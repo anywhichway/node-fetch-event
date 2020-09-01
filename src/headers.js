@@ -64,6 +64,15 @@ const validateHeaderValue = typeof http.validateHeaderValue === 'function' ?
  *
  */
 export default class Headers extends URLSearchParams {
+	static isHeaders(headers,relaxed) {
+		if(!headers || typeof(headers)!=="object") {
+			return false;
+		}
+		if(relaxed) {
+			return true;
+		}
+		return headers instanceof Headers || headers.constructor.name==="Headers";
+	}
 	/**
 	 * Headers class
 	 *
@@ -237,6 +246,14 @@ export default class Headers extends URLSearchParams {
 		for (const name of this.keys()) {
 			yield [name, this.get(name)];
 		}
+	}
+	
+	toJSON() {
+		const json = {};
+		for (const name of this.keys()) {
+			json[name] = this.get(name);
+		}
+		return json;
 	}
 
 	[Symbol.iterator]() {

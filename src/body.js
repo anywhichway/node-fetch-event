@@ -28,6 +28,8 @@ SOFTWARE.
  * Body interface provides common methods for Request and Response
  */
 
+const streamBuffers = require('stream-buffers');	
+
 import Stream, {PassThrough} from 'stream';
 import {types} from 'util';
 
@@ -56,8 +58,7 @@ export default class Body {
 		let boundary = null;
 
 		if (body === null) {
-			// Body is undefined or null
-			body = null;
+			// Body is null
 		} else if (isURLSearchParameters(body)) {
 		// Body is a URLSearchParams
 			body = Buffer.from(body.toString());
@@ -71,7 +72,7 @@ export default class Body {
 		} else if (ArrayBuffer.isView(body)) {
 			// Body is ArrayBufferView
 			body = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
-		} else if (body instanceof Stream) {
+		} else if (body instanceof Stream || body instanceof streamBuffers.ReadableStreamBuffer) {
 			// Body is stream
 		} else if (isFormData(body)) {
 			// Body is an instance of formdata-node
@@ -186,7 +187,7 @@ async function consumeBody(data) {
 	}
 
 	data[INTERNALS].disturbed = true;
-
+	
 	if (data[INTERNALS].error) {
 		throw data[INTERNALS].error;
 	}

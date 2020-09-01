@@ -3,11 +3,13 @@ const http = require("http"),
 	fetch = require("node-fetch"),
 	deepcopy = require('deepcopy'),
 	streamBuffers = require('stream-buffers');	
-	
+
+import Stream from 'stream';
 import Headers from './headers.js';
 import Body from './body.js';
 import ReadableStreamClone from 'readable-stream-clone';
 
+const INTERNALS = Symbol('Response internals');
 
 function cloneBody(body) {
 	const type = typeof(body);
@@ -34,7 +36,17 @@ const lock = (object={}) => {
 }
 
 class Response extends Body {
-	constructor(input,{headers=input ? input.headers||{} : {},status=input ? input.status||200 : 200,statusText = input ? input.statusText : undefined}={}) {
+	static isResponse(response,relaxed) {
+		if(!response || typeof(response)!=="object") {
+			return false;
+		}
+		if(relaxed) {
+			return typeof(response.status)==="number" && typeof(response.statusText)==="string" && typeof(response.url)==="string" && Headers.isHeaders(response.headers,relaxed)
+		}
+		return response instanceof Response || response.constructor.name==="Response";
+	}
+	constructor(input,options={}) {
+		let {headers=input ? input.headers||{} : {},status=input ? input.status||200 : 200,statusText = input ? input.statusText : undefined} = options;
 		const type = typeof(input);
 		if(input && type==="object") {
 			if(input instanceof Response) {
@@ -47,6 +59,9 @@ class Response extends Body {
 				super(null);
 				const responseheaders = input.getHeaders();
 				headers = new Headers(responseheaders,input);
+			} else if(input instanceof Stream.Writable || input instanceof streamBuffers.ReadableStreamBuffer) {
+				super(input);
+				headers = new Headers(headers);
 			} else {
 				headers = new Headers(headers);
 				super(input.body,{size:headers.get("content-length")||0});
@@ -60,24 +75,28 @@ class Response extends Body {
 			super(input);
 			Object.defineProperty(this,"end",{configurable:true,writable:true,value:function(data) {
 				if(this.writable) {
-					if(this.nodeResponse) {
-						this.nodeResponse.end(data);
-						return;
-					};
+					this.body.put(data)
 					this.body.stop();
 					lock(this);
 				}
 			}});
 			Object.defineProperty(this,"write",{configurable:true,writable:true,value:function(data) {
 				if(this.writable) {
-					this.nodeResponse ? this.nodeResponse.write(data) : this.body.put(data);
+					this.body.put(data);
 				}
 			}})
 		} else {
 			headers = new Headers(headers);
 			super(input);
 		}
-		Object.defineProperty(this,"internals",{value:{headers,status,statusText}});
+		this[INTERNALS] = {
+			url: options.url,
+			status,
+			statusText: options.statusText || '',
+			headers,
+			counter: options.counter, //?
+			highWaterMark: options.highWaterMark //?
+		};
 		if(!this.writable) {
 			lock(this);
 		}
@@ -95,20 +114,35 @@ class Response extends Body {
 			lock(this);
 		}
 	}
-	get headers() {
-		return this.internals.headers;
+	get url() {
+		return this[INTERNALS].url || '';
 	}
+
 	get status() {
-		return this.nodeResponse ? this.nodeResponse.statusCode : this.internals.statusCode
+		return this[INTERNALS].status;
 	}
+
+	/**
+	 * Convenience property representing if the request ended normally
+	 */
+	get ok() {
+		return this[INTERNALS].status >= 200 && this[INTERNALS].status < 300;
+	}
+
+	get redirected() {
+		return this[INTERNALS].counter > 0;
+	}
+
 	get statusText() {
-		return this.nodeResponse ? this.nodeResponse.statusMessage: this.internals.statusText
+		return this[INTERNALS].statusText;
 	}
-	set status(code) {
-		return this.nodeResponse ? this.nodeResponse.statusCode=code : this.internals.statusCode=code
+
+	get headers() {
+		return this[INTERNALS].headers;
 	}
-	set statusText(text) {
-		return this.nodeResponse ? this.nodeResponse.statusMessage=text : this.internals.statusText=text
+
+	get highWaterMark() {
+		return this[INTERNALS].highWaterMark;
 	}
 	
 	get writable() {

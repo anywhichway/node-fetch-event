@@ -1,32 +1,17 @@
-const storage = require('node-persist');
+import AsyncStorage from "./async-storage.js";
 
-class _KVStore {
-	constructor(name) {
-		const store = storage.create({dir:name}),
-			__storage = store.init().then(() => store);
-		Object.defineProperty(this,"name",{get:()=>name});
-		Object.defineProperty(this,"_storage",{get:()=>__storage});
-	}
-	async storage() {
-		return this._storage;
-	}
-}
-
-class KVStore extends _KVStore {
+class KVStore extends AsyncStorage {
 	constructor(name) {
 		super(name);
 	}
-	get _storage() {
-		return undefined; // make effectively private
-	}
 	async delete(key) {
-		return super.storage().then(storage => storage.del(key));
+		return super.storage().then(storage => storage.removeItem(key));
 	}
 	async get(key) {
-		return super.storage().then(storage => storage.get(key).then(({value}={}) => { return value; }));
+		return super.storage().then(storage => storage.getItem(key).then(({value,expiration}={}) => { return typeof(expiration)==="number" && expiration*1000<=Date.now() ? undefined : value; }));
 	}
 	async getWithMetadata(key) {
-		return super.storage().then(storage => storage.get(key).then(({value,metadata={}}={}) => { return value===undefined ? undefined : {value,metadata}; }));
+		return super.storage().then(storage => storage.getItem(key).then(({value,expiration,metadata={}}={}) => { return value===undefined || (typeof(expiration)==="number" && expiration*1000<=Date.now()) ? undefined : {value,metadata}; }));
 	}
 	async put(key,value,{expiration,expirationTtl,metadata}={}) {
 		if(typeof(expiration)==="number" && typeof(expirationTtl)==="number") {
@@ -37,14 +22,21 @@ class KVStore extends _KVStore {
 			expirationTtl = expiration - now;
 		}
 		expiration = expirationTtl + now;
-		return super.storage().then(storage => storage.set(key,{key,value,metadata,expiration},{ttl:expirationTtl*1000}));
+		const ttl = expirationTtl ? expirationTtl * 1000 : undefined;
+		return super.storage().then(storage => storage.setItem(key,{key,value,metadata,expiration},{ttl}));
 	}
 	async list({prefix="",limit,cursor}) {
 		return super.storage().then(storage => storage.valuesWithKeyMatch(new RegExp(prefix+".*"))).then(results => results.map(({key,expiration,metadata}) => { return {name:key,expiration,metadata}; }));
 	}
-	storage() { }
+	storage() { } // make effectively private
+	get _storage() { } // make effectively private
+	getItem() { }
+	setItem() { }
+	removeItem() { } 
 }
 
 export { KVStore as default, KVStore };
-module.exports = KVStore;
-KVStore.KVStore = KVStore;
+if(typeof(require)!=="undefined") {
+	module.exports = KVStore;
+	KVStore.KVStore = KVStore;
+}
