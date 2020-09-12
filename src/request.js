@@ -91,7 +91,8 @@ Object.defineProperties(Request.prototype, {
 	referrer: {enumerable: true},
 	referrerPolicy: {enumerable: true},
 	clone: {enumerable: true},
-	signal: {enumerable: true}
+	signal: {enumerable: true},
+	params: {enumerable: true,writable:true,configurable:true}
 });
 
 

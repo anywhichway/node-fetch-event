@@ -1,0 +1,21 @@
+{
+	"get": {
+		"/": {
+			"path": "worker"
+		},
+		"/\/hello.*/": {
+			"path": "worker"
+		},
+		"/\/bye.*/": {
+			"path": "http://localhost:8082/goodbye.js",
+			"maxAge": 36000
+		},
+		"/message/:content": {
+			"path": "message?content=hello world",
+			"useQuery": true
+		},
+		"/kvstore": {
+			"path": "kvstore"
+		}
+	}
+}

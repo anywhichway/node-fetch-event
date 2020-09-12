@@ -3,32 +3,14 @@
 	"hostname": "localhost",
 	"port": 3001,
 	"maxServers": 4,
-	"standalone": true,
-	"cacheWorkers": true,
-	"workerSource": "http://localhost:8082",
+	"defaultWorkerRoot":"http://localhost:8082",
 	"workerFailureMode":"error",
 	"keys": {
 		
 	},
-	"routes": {
-		"get": {
-			"/": {
-				"path": "worker"
-			},
-			"/\/hello.*/": {
-				"path": "worker"
-			},
-			"/\/bye.*/": {
-				"path": "http://localhost:8082/goodbye.js",
-				"maxAge": 36000
-			},
-			"/message/:content": {
-				"path": "message?content=hello world",
-				"useQuery": true
-			},
-			"/kvstore": {
-				"path": "kvstore"
-			}
-		}
+	"routes": "http://localhost:8082/routes.js",
+	"workerLimits": {
+		"maxAge": 60000,
+		"maxCache": 60000
 	}
 }

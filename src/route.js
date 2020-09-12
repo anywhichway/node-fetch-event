@@ -1,3 +1,7 @@
+import { Response } from "./response.js";
+
+const AsyncPrototype = Object.getPrototypeOf(async ()=>{});
+
 function extractParams(pattern,pathname) {
 	const patternparts = pattern.split("/"),
 		pathparts = pathname.split("/"),
@@ -31,26 +35,48 @@ function extractParams(pattern,pathname) {
 	}
 }
 
-function route(toMatch,request,worker,aroute) {
+async function route(toMatch,request,response,serviceWorkerFactory,aroute) {
 	const type = typeof(toMatch),
 		url = new URL(request.url),
 		method = request.method.toLowerCase();
 	if(type==="string") {
 		if(toMatch==="*") {
 			if(url.pathname.endsWith("/")) {
-				return aroute ? aroute[method]||aroute : {path:url.pathname + worker};
+				return aroute ? aroute[method]||aroute : (await serviceWorkerFactory.get(url.pathname + serviceWorkerFactory.defaultWorkerName)).run(request,response);
 			}
-			return aroute ? aroute[method]||aroute : {path:url.pathname};
+			return aroute ? aroute[method]||aroute : (await serviceWorkerFactory.get(url.pathname)).run(request,response);
 		}
-		const params = extractParams(toMatch,url.pathname);
+		const params = extractParams(toMatch,url.pathname); // will only succeed if there is a path match
 		if(params) {
+			const requestcopy = request.clone();
+			requestcopy.params = params;
+			let result;
 			if(aroute) {
-				if(aroute[method]) {
-					return Object.assign({},aroute[method],{params});
+				if(Array.isArray(aroute)) {
+					for(let i=0;i<aroute.length;i++) {
+						const f = aroute[i];
+						result = Object.getPrototypeOf(f)===AsyncPrototype ? await f(requestcopy,response) : await new Promise((resolve) => f(requestcopy,response,resolve));
+						if(result==="route") {
+							return;
+						}
+						if(result && typeof(result)==="object") {
+							const options = Object.assign({},serviceWorkerFactory.options,result);
+							delete options.path;
+							response = await (await serviceWorkerFactory.get(result.path || url.pathname,options)).run(requestcopy,response);
+						}
+					}
+					return response;
+				} else if(aroute[method]) {
+					return route(toMatch,request,response,serviceWorkerFactory,aroute[method]);
+				} else {
+					result = aroute;
 				}
-				return Object.assign({},aroute,{params})
 			}
-			return {path:url.pathname,params}
+			if(typeof(result)==="function") {
+				return aroute(requestcopy,response)
+			}
+			result || (result = {});
+			return (await serviceWorkerFactory.get(result.path || url.pathname)).run(requestcopy,response);;
 		}
 	} else if(toMatch && type==="object") {
 		if(toMatch[method]) {
@@ -58,12 +84,13 @@ function route(toMatch,request,worker,aroute) {
 		}
 		for(const key in toMatch) {
 			if(key.startsWith("/")) {
-				const match = route(key,request,worker,toMatch[key]);
-				if(match) {
-					return match;
+				const result = await route(key,request,response,serviceWorkerFactory,toMatch[key]);
+				if(result) {
+					return result;
 				}
 			}
 		}
+		return new Response(null,{status:404,statusText:"Not Found"});
 	}
 }
 
